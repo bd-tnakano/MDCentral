@@ -1,0 +1,27 @@
+{
+  "name": "md-central-monitor",
+  "version": "1.0.0",
+  "description": "MDCentralMonitor - Wide-Area Clinical Telemetry Dashboard & Gateway",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo 'No compilation step required for Node.js backend.'"
+  },
+  "keywords": [
+    "telemetry",
+    "bedside-monitor",
+    "central-monitor",
+    "hl7",
+    "healthcare"
+  ],
+  "author": "Antigravity Systems",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "0.21.1",
+    "express": "4.17.1",
+    "lodash": "4.17.15",
+    "minimist": "1.2.5",
+    "moment": "2.29.1",
+    "ws": "7.4.5"
+  }
+}

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MDCentralMonitor - 広域医療生体テレメトリ中央監視システム</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation / Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-logo">
+          <span class="pulse-icon"></span>
+          <span class="brand-title">MDCentralMonitor</span>
+          <span class="badge-tag">Wide-Area Web Gateway</span>
+        </div>
+      </div>
+
+      <!-- Live Global Metrics -->
+      <div class="header-stats">
+        <div class="stat-box">
+          <span class="stat-label">登録グループ (MDMonitor)</span>
+          <span class="stat-value" id="stat-monitors">0</span>
+        </div>
+
+        <div class="stat-box capacity-box">
+          <div class="stat-label-group">
+            <span class="stat-label">監視 MDSensor 数</span>
+            <span class="capacity-ratio"><span id="stat-sensors">0</span> / 1,000</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="capacity-progress" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="stat-box alarm-stat-box" id="alarm-box">
+          <span class="stat-label">アクティブアラーム</span>
+          <span class="stat-value alarm-count" id="stat-alarms">0</span>
+        </div>
+      </div>
+
+      <!-- Action Controls -->
+      <div class="header-actions">
+        <button class="btn btn-primary" id="btn-group-modal">
+          <span class="btn-icon">🏥</span> 表示グループ選択
+          <span class="badge-count group-count-badge" id="group-selected-badge">全表示</span>
+        </button>
+        <button class="btn btn-warning" id="btn-pending-modal">
+          <span class="btn-icon">🔔</span> 承認待ち要求
+          <span class="badge-count" id="pending-badge">0</span>
+        </button>
+        <button class="btn btn-secondary" id="btn-sim-modal">
+          <span class="btn-icon">⚡</span> 1,000台規模シミュレータ
+        </button>
+        <button class="btn btn-secondary" id="btn-refresh">
+          <span class="btn-icon">🔄</span> 更新
+        </button>
+      </div>
+    </header>
+
+    <!-- Filter & Notification Bar -->
+    <div class="filter-bar">
+      <div class="search-box">
+        <input type="text" id="input-search" placeholder="患者名、ベッド番号、グループ名でフィルタ検索...">
+      </div>
+      <div class="quick-filters">
+        <button class="filter-btn active" data-filter="all">全患者表示</button>
+        <button class="filter-btn" data-filter="alarm">アラーム発生中のみ</button>
+      </div>
+      <!-- Quick Group Selector Dropdown -->
+      <div class="group-select-wrapper">
+        <label for="select-quick-group">表示グループ:</label>
+        <select id="select-quick-group" class="group-dropdown">
+          <option value="ALL">すべての選択グループ (ALL)</option>
+        </select>
+      </div>
+      <div class="live-status-pill" id="ws-status">
+        <span class="status-dot online"></span> WebSocket接続中
+      </div>
+    </div>
+
+    <!-- Active Selection Notification Banner (when filtered) -->
+    <div class="selection-banner" id="selection-banner" style="display: none;">
+      <span>📌 現在 <strong><span id="banner-group-count">0</span></strong> 個のグループのみを表示しています。</span>
+      <button class="btn-link" id="btn-banner-reset">すべての登録グループを表示する</button>
+    </div>
+
+    <!-- Main Content Area: MDMonitor Groups Container -->
+    <main class="main-content" id="groups-container">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🏥</div>
+        <h3>接続されている MDMonitor はまだありません</h3>
+        <p>MDMonitor からの登録リクエストを待機中、または上の「1,000台規模シミュレータ」でテストデータを生成してください。</p>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <span>MDCentralMonitor (C++ Qt5 MDMonitor & MDSensor Telemetry Hub) - Scale Target: Max 1,000 Sensors</span>
+      <span>HL7 ORU^R01 Integrated EHR Gateway</span>
+    </footer>
+  </div>
+
+  <!-- MODAL 1: Group Selection Modal (表示グループ選択画面) -->
+  <div class="modal-backdrop" id="modal-groups" style="display: none;">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h2>🏥 表示グループ (MDMonitor / 病棟) の選択</h2>
+        <button class="modal-close" data-close="modal-groups">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">
+          ダッシュボードに表示する MDMonitor グループ (病棟/エリア) を選択してください。<br>
+          チェックを外したグループは画面上に表示されず、担当病棟のみを集中監視できます。
+        </p>
+        <div class="group-selector-controls">
+          <div class="group-control-btns">
+            <button class="btn btn-secondary btn-sm" id="btn-groups-select-all">✓ 全グループ選択</button>
+            <button class="btn btn-secondary btn-sm" id="btn-groups-deselect-all">✗ 全解除</button>
+          </div>
+          <span class="group-selected-summary" id="groups-modal-summary">選択中: 0 / 0 グループ</span>
+        </div>
+        <div class="group-checkbox-grid" id="group-checkbox-container">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="modal-groups">キャンセル</button>
+        <button class="btn btn-primary" id="btn-groups-apply">選択を適用して表示</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Manual Approval Modal (マニュアル承認ダイアログ) -->
+  <div class="modal-backdrop" id="modal-pending" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🔔 MDMonitor 登録要求の承認管理</h2>
+        <button class="modal-close" data-close="modal-pending">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">
+          以下の MDMonitor (グループ/病棟) から MDCentralMonitor への接続登録リクエストが届いています。<br>
+          「承認」ボタンを押すと、この MDMonitor からのリアルタイム生体情報を受信・表示します。
+        </p>
+        <div class="pending-list" id="pending-list-container">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="modal-pending">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Scale Simulator Modal (1,000台規模シミュレータ) -->
+  <div class="modal-backdrop" id="modal-simulator" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>⚡ 広域 1,000台 MDSensor 負荷シミュレータ</h2>
+        <button class="modal-close" data-close="modal-simulator">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">
+          広域監視テスト用として、複数の MDMonitor グループと最大1,000台の MDSensor 仮想データを生成します。
+        </p>
+        <div class="form-group">
+          <label>生成する MDMonitor グループ数 (病棟数):</label>
+          <input type="number" id="sim-monitors" min="1" max="50" value="10">
+        </div>
+        <div class="form-group">
+          <label>各グループあたりの MDSensor 台数 (ベッド数):</label>
+          <input type="number" id="sim-sensors" min="1" max="100" value="50">
+          <small>例: 10グループ × 50台 = 500台 / 20グループ × 50台 = 1,000台</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="btn-sim-clear">全データクリア</button>
+        <button class="btn btn-success" id="btn-sim-run">シミュレーション生成実行</button>
+        <button class="btn btn-secondary" data-close="modal-simulator">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: Patient Detail & HL7 ORU History Modal -->
+  <div class="modal-backdrop" id="modal-patient" style="display: none;">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h2>📊 患者テレメトリ履歴 & HL7 ORU 出力</h2>
+        <button class="modal-close" data-close="modal-patient">&times;</button>
+      </div>
+      <div class="modal-body" id="patient-detail-body">
+        <!-- Dynamically populated -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="modal-patient">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
